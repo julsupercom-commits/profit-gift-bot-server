@@ -1,14 +1,13 @@
 {
-  "name": "lev-padel-mcp-server",
+  "name": "profit-gift-bot-server",
   "version": "1.0.0",
-  "description": "MCP server for Lev Padel bot — court availability + CRM leads",
+  "description": "Instagram DM bot for Profit Gift — Claude AI + Meta API",
   "main": "server.js",
   "type": "module",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.12.0",
     "express": "^5.1.0",
     "cors": "^2.8.5"
   },
