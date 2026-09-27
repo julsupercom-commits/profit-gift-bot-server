@@ -45,6 +45,8 @@ const conversations = new Map();
 const humanTakeover = new Map();
 const lastShareResponse = new Map();
 const followupTimers = new Map();
+const lastTelegramNotify = new Map();
+const TELEGRAM_NOTIFY_COOLDOWN = 2 * 60 * 60 * 1000;
 
 // ═══════════════════════════════════════════════════════════
 //  HEALTH CHECK
@@ -248,7 +250,7 @@ async function callClaude(conversationMessages) {
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-3-5-sonnet-20241022",
+        model: "claude-sonnet-4-20250514",
         max_tokens: 1024,
         system: BOT_SYSTEM_PROMPT,
         messages,
@@ -258,7 +260,9 @@ async function callClaude(conversationMessages) {
     const data = await res.json();
 
     if (data.error) {
-      console.error("[Claude] API error:", data.error);
+      console.error("[Claude] API error:", JSON.stringify(data.error));
+      console.error("[Claude] HTTP status:", res.status);
+      console.error("[Claude] API key prefix:", ANTHROPIC_API_KEY?.substring(0, 12) + "...");
       return "Вибачте, технічна помилка. Спробуйте написати ще раз або зателефонуйте: +380933570808 😊";
     }
 
@@ -661,10 +665,14 @@ app.post("/webhook", async (req, res) => {
 
       console.log(`[Webhook] Message from ${senderId}: ${(messageText || "[image]").substring(0, 80)}`);
 
-      // Telegram notification about new message
-      sendTelegramNotification(
-        `💬 <b>Нове повідомлення</b>\nКлієнт: ${senderId}\n${(messageText || "[зображення]").substring(0, 300)}`
-      );
+      // Telegram notification — only first message per client (2h cooldown)
+      const lastNotify = lastTelegramNotify.get(senderId) || 0;
+      if (Date.now() - lastNotify > TELEGRAM_NOTIFY_COOLDOWN) {
+        lastTelegramNotify.set(senderId, Date.now());
+        sendTelegramNotification(
+          `💬 <b>Нове повідомлення в DM!</b>\nКлієнт: ${senderId}\n${(messageText || "[зображення]").substring(0, 300)}`
+        );
+      }
 
       // ── Message batching ──
       let queue = messageQueues.get(senderId);
