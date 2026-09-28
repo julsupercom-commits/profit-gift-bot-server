@@ -653,8 +653,16 @@ app.post("/webhook", async (req, res) => {
               imageDataUrl = await downloadImageAsBase64(imgAttachment.payload.url);
             }
             messageText = event.message.text || "";
+          } else if (types.includes("share")) {
+            const shareAtt = event.message.attachments.find((a) => a.type === "share");
+            const shareUrl = shareAtt?.payload?.url || "";
+            messageText = event.message.text || `[Клієнт поділився постом: ${shareUrl}]`;
+          } else if (types.includes("video") || types.includes("reel")) {
+            messageText = event.message.text || "[Клієнт надіслав відео]";
+          } else if (types.includes("story_mention")) {
+            messageText = "[Клієнт згадав нас у сторіс]";
           } else {
-            messageText = `[Клієнт надіслав: ${types.join(", ")}]`;
+            messageText = event.message.text || `[Клієнт надіслав: ${types.join(", ")}]`;
           }
         } else if (event.postback) {
           messageText = event.postback.payload || event.postback.title || "[кнопка]";
