@@ -565,16 +565,10 @@ app.post("/webhook", async (req, res) => {
             if (echoText && echoText.toLowerCase().startsWith("/bot")) {
               humanTakeover.delete(echoRecipient);
               console.log(`[Takeover] Admin sent /bot — bot RESUMED for ${echoRecipient}`);
-              sendTelegramNotification(
-                `🤖 <b>Бот УВІМКНЕНО</b>\nКлієнт: ${echoRecipient}\nМенеджер написав /bot — бот знову відповідає`
-              );
             } else {
               humanTakeover.set(echoRecipient, Date.now());
               cancelFollowup(echoRecipient);
               console.log(`[Takeover] Admin replied to ${echoRecipient}, bot paused for 2 hours`);
-              sendTelegramNotification(
-                `⏸ <b>Бот на ПАУЗІ 2 год</b>\nКлієнт: ${echoRecipient}\nМенеджер відповів — бот мовчить`
-              );
             }
           }
         }
