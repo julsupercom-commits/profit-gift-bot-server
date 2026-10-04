@@ -317,16 +317,16 @@ async function processMessage(senderId, texts, images) {
   conversations.set(senderId, conv);
 
   // Notify Telegram about handoff requests
-  if (/підключу колегу|зв'яжеться|передам менеджеру|адміністратор/i.test(response)) {
+  if (/підключу колег|зв'яжеться|передам менеджер|адміністратор|уточню у колег|напишу Вам|напише Вам/i.test(response)) {
     sendTelegramNotification(
-      `🔔 <b>Бот передає клієнта менеджеру!</b>\nКлієнт: ${senderId}\nОстаннє: ${combinedText.substring(0, 200)}\nВідповідь: ${response.substring(0, 200)}`
+      `🚨 <b>МЕНЕДЖЕР, ПІДКЛЮЧИСЬ!</b>\n\n👤 Клієнт: ${senderId}\n\n💬 Клієнт написав:\n${combinedText.substring(0, 300)}\n\n🤖 Бот відповів:\n${response.substring(0, 300)}\n\n👉 Перевір дірект profit_gift`
     );
   }
 
   // Notify about potential order
-  if (/оформлю|доставк|оплат|місто доставки/i.test(response)) {
+  if (/оформлю|доставк|оплат|місто доставки|в яке місто/i.test(response)) {
     sendTelegramNotification(
-      `🛒 <b>Можливе замовлення!</b>\nКлієнт: ${senderId}\nОстаннє: ${combinedText.substring(0, 200)}`
+      `🛒 <b>МОЖЛИВЕ ЗАМОВЛЕННЯ!</b>\n\n👤 Клієнт: ${senderId}\n💬 ${combinedText.substring(0, 300)}\n\n👉 Перевір дірект profit_gift`
     );
   }
 
