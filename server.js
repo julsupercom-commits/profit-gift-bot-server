@@ -604,17 +604,18 @@ app.post("/webhook", async (req, res) => {
       let imageDataUrl = null;
 
       // ── Story mention detection (only pure mentions without text) ──
+      const hasText = event.message?.text && event.message.text.trim().length > 0;
       const isStoryMention =
-        event.referral?.type === "STORY_MENTION" ||
-        (event.message?.attachments?.some((a) =>
-          ["story_mention"].includes(a.type)
-        ) && !event.message?.text);
+        !hasText && (
+          event.referral?.type === "STORY_MENTION" ||
+          event.message?.attachments?.some((a) => a.type === "story_mention")
+        );
 
       if (isStoryMention) {
         const lastShare = lastShareResponse.get(senderId);
         if (lastShare && Date.now() - lastShare < SHARE_RESPONSE_COOLDOWN) continue;
         lastShareResponse.set(senderId, Date.now());
-        console.log(`[Webhook] Story mention from ${senderId} — no reply`);
+        console.log(`[Webhook] Story mention from ${senderId} (no text) — no reply`);
         continue;
       }
 
