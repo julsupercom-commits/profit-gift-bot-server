@@ -603,23 +603,22 @@ app.post("/webhook", async (req, res) => {
       let messageText;
       let imageDataUrl = null;
 
-      // ── Share/mention detection ──
+      // ── Story mention detection (only pure mentions without text) ──
       const isStoryMention =
-        event.message?.attachments?.some((a) =>
-          ["share", "story_mention", "reel", "ig_reel", "media_share"].includes(a.type)
-        ) || event.referral?.type === "STORY_MENTION";
+        event.referral?.type === "STORY_MENTION" ||
+        (event.message?.attachments?.some((a) =>
+          ["story_mention"].includes(a.type)
+        ) && !event.message?.text);
 
       if (isStoryMention) {
         const lastShare = lastShareResponse.get(senderId);
         if (lastShare && Date.now() - lastShare < SHARE_RESPONSE_COOLDOWN) continue;
         lastShareResponse.set(senderId, Date.now());
-        console.log(`[Webhook] Story mention/share from ${senderId} — no reply`);
+        console.log(`[Webhook] Story mention from ${senderId} — no reply`);
         continue;
       }
 
-      // ── Suppress text after story mention ──
-      const recentShare = lastShareResponse.get(senderId);
-      if (recentShare && Date.now() - recentShare < 10000) continue;
+      // ── Suppress duplicate story mentions only ──
 
       // ── Emoji reactions — silent ──
       const rawText = event.message?.text || "";
