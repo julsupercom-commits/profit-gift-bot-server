@@ -526,11 +526,22 @@ app.post("/webhook", async (req, res) => {
   }
 
   const body = req.body;
-  if (body.object !== "instagram") return;
+  console.log(`[Webhook] Incoming: object=${body.object}, entries=${(body.entry || []).length}`);
+  if (body.object !== "instagram" && body.object !== "page") {
+    console.log(`[Webhook] Ignored object type: ${body.object}`);
+    return;
+  }
 
   for (const entry of body.entry || []) {
     for (const event of entry.messaging || []) {
       if (event.read || event.delivery) continue;
+
+      const eventSender = event.sender?.id;
+      const eventText = event.message?.text || "";
+      const eventTypes = event.message?.attachments?.map(a => a.type).join(",") || "none";
+      const isEcho = event.message?.is_echo;
+      const hasReferral = !!event.referral;
+      console.log(`[Webhook] Event: sender=${eventSender} echo=${!!isEcho} text="${eventText.substring(0,50)}" attachments=${eventTypes} referral=${hasReferral}`);
 
       // ── Echo handling ──
       if (event.message?.is_echo) {
