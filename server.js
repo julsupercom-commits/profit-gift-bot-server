@@ -549,30 +549,16 @@ app.post("/webhook", async (req, res) => {
 
         const echoRecipient = event.recipient?.id;
         const echoText = (event.message?.text || "").trim().substring(0, 100);
-        const echoMid = event.message?.mid;
+        const echoAppId = event.message?.app_id?.toString();
 
-        if (echoRecipient && (echoText || echoMid)) {
-          let isBotEcho = false;
-          if (echoMid && botSentMessageIds.has(echoMid)) {
-            botSentMessageIds.delete(echoMid);
-            isBotEcho = true;
-          }
-
-          if (!isBotEcho && echoText) {
-            const sentList = botSentTexts.get(echoRecipient);
-            const matchIdx = sentList
-              ? sentList.findIndex((e) => echoText === e.text)
-              : -1;
-            if (matchIdx !== -1) {
-              sentList.splice(matchIdx, 1);
-              if (sentList.length === 0) botSentTexts.delete(echoRecipient);
-              isBotEcho = true;
-            }
-          }
+        if (echoRecipient) {
+          // Primary detection: if echo was sent by our app, it's a bot echo
+          const isBotEcho = echoAppId && echoAppId === META_APP_ID;
 
           if (isBotEcho) {
-            console.log(`[Echo] Bot echo for ${echoRecipient}`);
+            console.log(`[Echo] Bot echo for ${echoRecipient} (app_id=${echoAppId})`);
           } else {
+            console.log(`[Echo] ADMIN message for ${echoRecipient} (app_id=${echoAppId || "none"})`);
             if (echoText && echoText.toLowerCase().startsWith("/bot")) {
               humanTakeover.delete(echoRecipient);
               console.log(`[Takeover] Admin sent /bot — bot RESUMED for ${echoRecipient}`);
