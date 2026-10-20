@@ -549,14 +549,38 @@ app.post("/webhook", async (req, res) => {
 
         const echoRecipient = event.recipient?.id;
         const echoText = (event.message?.text || "").trim().substring(0, 100);
+        const echoMid = event.message?.mid;
         const echoAppId = event.message?.app_id?.toString();
 
         if (echoRecipient) {
-          // Primary detection: if echo was sent by our app, it's a bot echo
-          const isBotEcho = echoAppId && echoAppId === META_APP_ID;
+          let isBotEcho = false;
+
+          // Method 1: app_id matches our app
+          if (echoAppId && echoAppId === META_APP_ID) {
+            isBotEcho = true;
+          }
+
+          // Method 2: message ID matches a bot-sent message
+          if (!isBotEcho && echoMid && botSentMessageIds.has(echoMid)) {
+            botSentMessageIds.delete(echoMid);
+            isBotEcho = true;
+          }
+
+          // Method 3: text matches a recently bot-sent text
+          if (!isBotEcho && echoText) {
+            const sentList = botSentTexts.get(echoRecipient);
+            const matchIdx = sentList
+              ? sentList.findIndex((e) => echoText === e.text)
+              : -1;
+            if (matchIdx !== -1) {
+              sentList.splice(matchIdx, 1);
+              if (sentList.length === 0) botSentTexts.delete(echoRecipient);
+              isBotEcho = true;
+            }
+          }
 
           if (isBotEcho) {
-            console.log(`[Echo] Bot echo for ${echoRecipient} (app_id=${echoAppId})`);
+            console.log(`[Echo] Bot echo for ${echoRecipient} (app_id=${echoAppId || "none"}, mid=${echoMid ? "match" : "no"})`);
           } else {
             console.log(`[Echo] ADMIN message for ${echoRecipient} (app_id=${echoAppId || "none"})`);
             if (echoText && echoText.toLowerCase().startsWith("/bot")) {
