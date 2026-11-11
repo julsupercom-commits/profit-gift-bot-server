@@ -47,6 +47,14 @@ const lastShareResponse = new Map();
 const followupTimers = new Map();
 const lastTelegramNotify = new Map();
 const TELEGRAM_NOTIFY_COOLDOWN = 2 * 60 * 60 * 1000;
+const GOOGLE_SHEET_WEBHOOK = process.env.GOOGLE_SHEET_WEBHOOK || "";
+
+// ═══════════════════════════════════════════════════════════
+//  CONVERSATION LOG (persistent analytics)
+// ═══════════════════════════════════════════════════════════
+
+const conversationLog = [];
+const MAX_LOG_ENTRIES = 5000;
 
 // ═══════════════════════════════════════════════════════════
 //  HEALTH CHECK
@@ -83,6 +91,29 @@ async function sendTelegramNotification(text) {
     );
   } catch (err) {
     console.error("[Telegram] Notification failed:", err.message);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  CONVERSATION LOGGING & ANALYTICS
+// ═══════════════════════════════════════════════════════════
+
+function logConversation(entry) {
+  const logEntry = {
+    timestamp: new Date().toISOString(),
+    ...entry,
+  };
+  conversationLog.push(logEntry);
+  while (conversationLog.length > MAX_LOG_ENTRIES) {
+    conversationLog.shift();
+  }
+
+  if (GOOGLE_SHEET_WEBHOOK) {
+    fetch(GOOGLE_SHEET_WEBHOOK, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(logEntry),
+    }).catch((err) => console.error("[Sheets] Log failed:", err.message));
   }
 }
 
@@ -311,10 +342,23 @@ async function processMessage(senderId, texts, images) {
 
   console.log(`[AI] Calling Claude for ${senderId} (${claudeMessages.length} messages)`);
 
+  const aiStartTime = Date.now();
   const response = await callClaude(claudeMessages);
+  const responseTimeMs = Date.now() - aiStartTime;
 
   conv.messages.push({ role: "assistant", content: response });
   conversations.set(senderId, conv);
+
+  logConversation({
+    clientId: senderId,
+    clientMessage: combinedText || "[зображення]",
+    botResponse: response,
+    responseTimeMs,
+    messageCount: conv.messages.length,
+    hasImage: !!imageDataUrl,
+    handoff: /підключу колег|зв'яжеться|передам менеджер|адміністратор|уточню у колег|напишу Вам|напише Вам/i.test(response),
+    orderSignal: /оформлю|доставк|оплат|місто доставки|в яке місто/i.test(response),
+  });
 
   // Notify Telegram about handoff requests
   if (/підключу колег|зв'яжеться|передам менеджер|адміністратор|уточню у колег|напишу Вам|напише Вам/i.test(response)) {
@@ -616,6 +660,14 @@ app.post("/webhook", async (req, res) => {
       const takeoverTime = humanTakeover.get(senderId);
       if (takeoverTime && Date.now() - takeoverTime < HUMAN_TAKEOVER_TTL) {
         console.log(`[Takeover] Bot paused for ${senderId} — admin handling`);
+        logConversation({
+          clientId: senderId,
+          clientMessage: event.message?.text || "[media]",
+          botResponse: "[ПРОПУЩЕНО — менеджер веде діалог]",
+          responseTimeMs: 0,
+          skipped: true,
+          skipReason: "human_takeover",
+        });
         continue;
       } else if (takeoverTime) {
         humanTakeover.delete(senderId);
@@ -738,6 +790,87 @@ app.post("/webhook", async (req, res) => {
       }, MESSAGE_BATCH_DELAY);
     }
   }
+});
+
+// ═══════════════════════════════════════════════════════════
+//  ANALYTICS ENDPOINTS
+// ═══════════════════════════════════════════════════════════
+
+app.get("/analytics", (_req, res) => {
+  const now = Date.now();
+  const today = new Date().toISOString().split("T")[0];
+
+  const totalEntries = conversationLog.length;
+  const uniqueClients = new Set(conversationLog.map((e) => e.clientId)).size;
+
+  const todayEntries = conversationLog.filter((e) => e.timestamp.startsWith(today));
+  const todayClients = new Set(todayEntries.map((e) => e.clientId)).size;
+
+  const handoffs = conversationLog.filter((e) => e.handoff).length;
+  const orderSignals = conversationLog.filter((e) => e.orderSignal).length;
+  const avgResponseTime = totalEntries > 0
+    ? Math.round(conversationLog.reduce((sum, e) => sum + (e.responseTimeMs || 0), 0) / totalEntries)
+    : 0;
+
+  const clientStats = {};
+  for (const entry of conversationLog) {
+    if (!clientStats[entry.clientId]) {
+      clientStats[entry.clientId] = { messages: 0, firstMessage: entry.timestamp, lastMessage: entry.timestamp };
+    }
+    clientStats[entry.clientId].messages++;
+    clientStats[entry.clientId].lastMessage = entry.timestamp;
+  }
+
+  const avgMessagesPerClient = uniqueClients > 0
+    ? Math.round((totalEntries / uniqueClients) * 10) / 10
+    : 0;
+
+  res.json({
+    period: `Since server start (${new Date(SERVER_START_TIME).toISOString()})`,
+    total: {
+      messages: totalEntries,
+      uniqueClients,
+      handoffs,
+      orderSignals,
+      avgResponseTimeMs: avgResponseTime,
+      avgMessagesPerClient,
+    },
+    today: {
+      date: today,
+      messages: todayEntries.length,
+      uniqueClients: todayClients,
+    },
+    activeConversations: conversations.size,
+    humanTakeoverActive: humanTakeover.size,
+  });
+});
+
+app.get("/conversations", (req, res) => {
+  const { client, limit = 100, date } = req.query;
+  let filtered = [...conversationLog];
+
+  if (client) {
+    filtered = filtered.filter((e) => e.clientId === client);
+  }
+  if (date) {
+    filtered = filtered.filter((e) => e.timestamp.startsWith(date));
+  }
+
+  const limited = filtered.slice(-Number(limit));
+
+  res.json({
+    total: filtered.length,
+    showing: limited.length,
+    entries: limited.map((e) => ({
+      time: e.timestamp,
+      client: e.clientId,
+      message: e.clientMessage,
+      response: e.botResponse,
+      responseTime: e.responseTimeMs + "ms",
+      handoff: e.handoff || false,
+      order: e.orderSignal || false,
+    })),
+  });
 });
 
 // ═══════════════════════════════════════════════════════════
