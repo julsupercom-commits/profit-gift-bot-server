@@ -25,11 +25,11 @@ const RAILWAY_URL = process.env.RAILWAY_URL || `http://localhost:${PORT}`;
 // ═══════════════════════════════════════════════════════════
 
 const SERVER_START_TIME = Date.now();
-const ECHO_GRACE_PERIOD = 10000;
+const ECHO_GRACE_PERIOD = 60000;
 const MESSAGE_BATCH_DELAY = 5000;
 const MESSAGE_ID_TTL = 600000;
 const SEND_DEDUP_TTL = 30000;
-const HUMAN_TAKEOVER_TTL = 2 * 60 * 60 * 1000;
+const HUMAN_TAKEOVER_TTL = 30 * 60 * 1000;
 const SHARE_RESPONSE_COOLDOWN = 60000;
 const CONVERSATION_TTL = 24 * 60 * 60 * 1000;
 const MAX_CONVERSATION_MESSAGES = 40;
@@ -40,6 +40,7 @@ const processedMessageIds = new Set();
 const recentSentMessages = new Map();
 const botSentMessageIds = new Set();
 const botSentTexts = new Map();
+const lastBotSendTime = new Map();
 const messageQueues = new Map();
 const conversations = new Map();
 const humanTakeover = new Map();
@@ -446,6 +447,8 @@ async function sendInstagramMessage(recipientId, text) {
           botSentMessageIds.add(sentMsgId);
           setTimeout(() => botSentMessageIds.delete(sentMsgId), 300000);
         }
+        lastBotSendTime.set(recipientId, Date.now());
+        setTimeout(() => lastBotSendTime.delete(recipientId), 60000);
         let sentList = botSentTexts.get(recipientId);
         if (!sentList) {
           sentList = [];
@@ -620,6 +623,15 @@ app.post("/webhook", async (req, res) => {
               sentList.splice(matchIdx, 1);
               if (sentList.length === 0) botSentTexts.delete(echoRecipient);
               isBotEcho = true;
+            }
+          }
+
+          // Method 4: timing fallback — if bot sent to this recipient within last 30s, assume it's our echo
+          if (!isBotEcho) {
+            const lastSend = lastBotSendTime.get(echoRecipient);
+            if (lastSend && Date.now() - lastSend < 30000) {
+              isBotEcho = true;
+              console.log(`[Echo] Timing fallback: bot sent to ${echoRecipient} ${Math.round((Date.now() - lastSend) / 1000)}s ago`);
             }
           }
 
@@ -871,6 +883,24 @@ app.get("/conversations", (req, res) => {
       order: e.orderSignal || false,
     })),
   });
+});
+
+app.get("/cleartakeover", (_req, res) => {
+  const count = humanTakeover.size;
+  const clients = [...humanTakeover.keys()];
+  humanTakeover.clear();
+  console.log(`[Takeover] Cleared all ${count} takeovers manually`);
+  res.json({ cleared: count, clients });
+});
+
+app.get("/takeover-status", (_req, res) => {
+  const entries = [];
+  for (const [clientId, time] of humanTakeover) {
+    const ago = Math.round((Date.now() - time) / 60000);
+    const remaining = Math.max(0, Math.round((HUMAN_TAKEOVER_TTL - (Date.now() - time)) / 60000));
+    entries.push({ clientId, startedMinAgo: ago, remainingMin: remaining });
+  }
+  res.json({ active: humanTakeover.size, entries });
 });
 
 // ═══════════════════════════════════════════════════════════
