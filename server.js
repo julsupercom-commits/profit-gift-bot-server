@@ -356,19 +356,19 @@ async function processMessage(senderId, texts, images) {
     responseTimeMs,
     messageCount: conv.messages.length,
     hasImage: !!imageDataUrl,
-    handoff: /підключу колег|зв'яжеться|передам менеджер|адміністратор|уточню у колег|напишу Вам|напише Вам/i.test(response),
-    orderSignal: /оформлю|доставк|оплат|місто доставки|в яке місто/i.test(response),
+    handoff: /підключу колег|зв'яжеться|передам менеджер|адміністратор|уточню у колег|напишу Вам|напише Вам|номер телефону/i.test(response),
+    orderSignal: /оформлю|доставк|оплат|місто доставки|в яке місто|номер телефону|залиште.*ім'я|зв'яжеться/i.test(response),
   });
 
   // Notify Telegram about handoff requests
-  if (/підключу колег|зв'яжеться|передам менеджер|адміністратор|уточню у колег|напишу Вам|напише Вам/i.test(response)) {
+  if (/підключу колег|зв'яжеться|передам менеджер|адміністратор|уточню у колег|напишу Вам|напише Вам|номер телефону/i.test(response)) {
     sendTelegramNotification(
       `🚨 <b>МЕНЕДЖЕР, ПІДКЛЮЧИСЬ!</b>\n\n👤 Клієнт: ${senderId}\n\n💬 Клієнт написав:\n${combinedText.substring(0, 300)}\n\n🤖 Бот відповів:\n${response.substring(0, 300)}\n\n👉 Перевір дірект profit_gift`
     );
   }
 
   // Notify about potential order
-  if (/оформлю|доставк|оплат|місто доставки|в яке місто/i.test(response)) {
+  if (/оформлю|доставк|оплат|місто доставки|в яке місто|номер телефону|залиште.*ім'я|зв'яжеться/i.test(response)) {
     sendTelegramNotification(
       `🛒 <b>МОЖЛИВЕ ЗАМОВЛЕННЯ!</b>\n\n👤 Клієнт: ${senderId}\n💬 ${combinedText.substring(0, 300)}\n\n👉 Перевір дірект profit_gift`
     );
